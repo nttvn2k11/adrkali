@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
 # ============================================================
-# KALI PRO GHOST EDITION – MINIMAL (KHÔNG ICON, KHÔNG GHI CHÚ)
+# KALI PRO GHOST EDITION – HỖ TRỢ WIFI ĐẦY ĐỦ & DẤU TIẾNG VIỆT
 # ============================================================
 
 VPN_CONFIG="$HOME/vpn.ovpn"
@@ -12,8 +12,8 @@ CONFIG_DIR="$HOME/.kali-pro"
 LOCK_VPN="$CONFIG_DIR/vpn.lock"
 LOCK_TOR="$CONFIG_DIR/tor.lock"
 LOG_FILE="$CONFIG_DIR/setup.log"
-
-mkdir -p "$CONFIG_DIR"
+WIFI_CONFIG_DIR="$CONFIG_DIR/wifi"
+mkdir -p "$CONFIG_DIR" "$WIFI_CONFIG_DIR"
 touch "$LOG_FILE"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
@@ -38,7 +38,7 @@ ensure_pkg() {
 }
 
 system_optimize() {
-    info "Dang toi uu he thong..."
+    info "Đang tối ưu hệ thống..."
     $NH_ROOT bash -c '
         echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null
         echo 10 > /proc/sys/vm/swappiness
@@ -54,30 +54,32 @@ system_optimize() {
         apt clean -qq 2>/dev/null
         apt autoremove -y -qq 2>/dev/null
     ' &>/dev/null &
-    info "Toi uu hoan tat"
+    info "Tối ưu hoàn tất"
 }
 
+# -------------------- VPN --------------------
 setup_vpn() {
     if [ ! -f "$VPN_CONFIG" ]; then
-        warn "Khong tim thay file VPN config tai $VPN_CONFIG"
+        warn "Không tìm thấy file VPN config tại $VPN_CONFIG"
         return 1
     fi
     ensure_pkg "openvpn" true
     if ! pgrep -f "openvpn.*$VPN_CONFIG" >/dev/null; then
         $NH_ROOT openvpn --config "$VPN_CONFIG" --daemon --writepid "$LOCK_VPN" \
             --redirect-gateway def1 --dhcp-option DNS 1.1.1.1 &>/dev/null
-        info "VPN da ket noi"
+        info "VPN đã kết nối"
     else
-        warn "VPN dang chay"
+        warn "VPN đang chạy"
     fi
 }
 
 stop_vpn() {
     $NH_ROOT pkill -f openvpn 2>/dev/null
     rm -f "$LOCK_VPN"
-    info "VPN da dung"
+    info "VPN đã dừng"
 }
 
+# -------------------- TOR --------------------
 setup_tor() {
     ensure_pkg "tor" true
     if [ ! -f "$TOR_CONFIG" ]; then
@@ -92,20 +94,21 @@ EOF
     if ! pgrep -f "tor.*-f $TOR_CONFIG" >/dev/null; then
         $NH_ROOT tor -f "$TOR_CONFIG" --runasdaemon 1 &>/dev/null
         touch "$LOCK_TOR"
-        info "Tor daemon da khoi dong"
+        info "Tor daemon đã khởi động"
     else
-        warn "Tor dang chay"
+        warn "Tor đang chạy"
     fi
 }
 
 stop_tor() {
     $NH_ROOT pkill -f "tor.*-f $TOR_CONFIG" 2>/dev/null
     rm -f "$LOCK_TOR"
-    info "Tor da dung"
+    info "Tor đã dừng"
 }
 
+# -------------------- MAC SPOOF --------------------
 spoof_mac() {
-    info "Dang lam moi dia chi MAC..."
+    info "Đang làm mới địa chỉ MAC..."
     ensure_pkg "macchanger" true
     $NH_ROOT bash -c '
         for iface in $(ls /sys/class/net | grep -v lo); do
@@ -115,11 +118,12 @@ spoof_mac() {
             ip link set "$iface" up
         done
     ' &>/dev/null &
-    info "MAC address da thay doi ngau nhien"
+    info "Địa chỉ MAC đã thay đổi ngẫu nhiên"
 }
 
+# -------------------- KILL SWITCH --------------------
 enable_kill_switch() {
-    info "Kich hoat Kill Switch..."
+    info "Kích hoạt Kill Switch..."
     $NH_ROOT bash -c '
         iptables -P INPUT DROP
         iptables -P OUTPUT DROP
@@ -128,7 +132,7 @@ enable_kill_switch() {
         iptables -A INPUT -i tun+ -j ACCEPT
         iptables -A OUTPUT -o lo -j ACCEPT
         iptables -A INPUT -i lo -j ACCEPT
-    ' 2>/dev/null && info "Kill Switch da bat" || error "Khong the thiet lap iptables"
+    ' 2>/dev/null && info "Kill Switch đã bật" || error "Không thể thiết lập iptables"
 }
 
 disable_kill_switch() {
@@ -137,11 +141,12 @@ disable_kill_switch() {
         iptables -P OUTPUT ACCEPT
         iptables -P FORWARD ACCEPT
         iptables -F
-    ' 2>/dev/null && info "Kill Switch da tat" || error "Khong the reset iptables"
+    ' 2>/dev/null && info "Kill Switch đã tắt" || error "Không thể reset iptables"
 }
 
+# -------------------- STEALTH --------------------
 activate_stealth() {
-    info "Kich hoat che do tang hinh..."
+    info "Kích hoạt chế độ tàng hình..."
     $NH_ROOT bash -c '
         RAND_NAME="ghost-$(tr -dc a-f0-9 < /dev/urandom | head -c 6)"
         echo "$RAND_NAME" > /etc/hostname
@@ -158,22 +163,23 @@ activate_stealth() {
         xfconf-query -c xfce4-panel -p /panels/panel-1/autohide -s true 2>/dev/null
         xfconf-query -c xfce4-notifyd -p /do-not-disturb -s true 2>/dev/null
     ' &>/dev/null &
-    info "Stealth mode: hostname ngau nhien, log trong, panel an"
+    info "Stealth mode: hostname ngẫu nhiên, log trống, panel ẩn"
 }
 
+# -------------------- DESKTOP --------------------
 setup_desktop() {
-    info "Cai dat moi truong desktop XFCE + Kali Desktop Experience..."
+    info "Cài đặt môi trường desktop XFCE + Kali Desktop Experience..."
     ensure_pkg "kali-desktop-xfce" true
     ensure_pkg "xfce4" true
     ensure_pkg "xfce4-goodies" true
     ensure_pkg "kex" true
     $NH_CMD kex stop 2>/dev/null
     $NH_CMD kex --set-shared -y 2>/dev/null
-    info "Desktop da san sang. Dung lenh 'kex' de khoi dong VNC."
+    info "Desktop đã sẵn sàng. Dùng lệnh 'kex' để khởi động VNC."
 }
 
 start_desktop() {
-    info "Khoi dong Kali Desktop & VPN + Tor + Stealth..."
+    info "Khởi động Kali Desktop & VPN + Tor + Stealth..."
     $NH_ROOT xfwm4 --replace --compositor=off --daemon 2>/dev/null &
     setup_vpn
     setup_tor
@@ -181,23 +187,152 @@ start_desktop() {
     activate_stealth
     $NH_CMD kex --slim &>/dev/null &
     sleep 2
-    info "Desktop dang chay. Truy cap VNC tai localhost:5901 (mat khau: kali)"
+    info "Desktop đang chạy. Truy cập VNC tại localhost:5901 (mật khẩu: kali)"
 }
 
 stop_desktop() {
-    info "Dung toan bo dich vu..."
+    info "Dừng toàn bộ dịch vụ..."
     $NH_CMD kex stop 2>/dev/null
     stop_vpn
     stop_tor
     disable_kill_switch
-    info "Da dung desktop va cac dich vu nac danh"
+    info "Đã dừng desktop và các dịch vụ ẩn danh"
 }
 
+# -------------------- WIFI --------------------
+check_wifi_tools() {
+    ensure_pkg "aircrack-ng" true
+    ensure_pkg "wireless-tools" true
+    ensure_pkg "wpasupplicant" true
+    ensure_pkg "network-manager" true
+    ensure_pkg "iw" true
+}
+
+wifi_list_interfaces() {
+    $NH_ROOT bash -c "iwconfig 2>/dev/null | grep -o '^[a-zA-Z0-9]*' | grep -v '^$'"
+}
+
+wifi_enable_monitor() {
+    check_wifi_tools
+    local iface
+    iface=$(wifi_list_interfaces | head -1)
+    if [ -z "$iface" ]; then
+        error "Không tìm thấy card mạng wifi."
+        return 1
+    fi
+    info "Đang bật chế độ monitor trên $iface..."
+    $NH_ROOT bash -c "
+        airmon-ng check kill
+        ip link set $iface down
+        iw dev $iface set type monitor 2>/dev/null || airmon-ng start $iface
+        ip link set $iface up
+    " &>/dev/null
+    if $NH_ROOT iw dev $iface info 2>/dev/null | grep -q "type monitor"; then
+        info "Chế độ monitor đã bật trên $iface"
+    else
+        error "Không thể bật monitor mode"
+    fi
+}
+
+wifi_disable_monitor() {
+    local iface
+    iface=$(wifi_list_interfaces | head -1)
+    [ -z "$iface" ] && iface="wlan0"
+    info "Đang tắt chế độ monitor trên $iface..."
+    $NH_ROOT bash -c "
+        ip link set $iface down
+        iw dev $iface set type managed 2>/dev/null || airmon-ng stop ${iface}mon 2>/dev/null
+        ip link set $iface up
+        systemctl restart NetworkManager 2>/dev/null
+    " &>/dev/null
+    info "Đã tắt monitor mode (nếu có)."
+}
+
+wifi_scan() {
+    check_wifi_tools
+    local iface
+    iface=$(wifi_list_interfaces | head -1)
+    if [ -z "$iface" ]; then
+        error "Không tìm thấy card wifi."
+        return 1
+    fi
+    info "Đang quét mạng wifi trên $iface (5 giây)..."
+    $NH_ROOT bash -c "iw dev $iface scan | grep -E 'SSID:|signal:' | paste -d ' ' - - | sed 's/SSID: //g; s/signal: //g'" || \
+    $NH_ROOT bash -c "nmcli dev wifi list ifname $iface" 2>/dev/null
+    read -p "Nhấn Enter để tiếp tục..."
+}
+
+wifi_connect() {
+    check_wifi_tools
+    local iface ssid psk
+    iface=$(wifi_list_interfaces | head -1)
+    if [ -z "$iface" ]; then
+        error "Không tìm thấy card wifi."
+        return 1
+    fi
+    read -p "Nhập tên mạng (SSID): " ssid
+    read -p "Nhập mật khẩu (để trống nếu không có): " psk
+    if [ -z "$psk" ]; then
+        # mạng mở
+        $NH_ROOT bash -c "
+            ip link set $iface up
+            iw dev $iface connect \"$ssid\"
+        " 2>/dev/null
+    else
+        # mạng có mật khẩu
+        local conf_file="$WIFI_CONFIG_DIR/wpa_$ssid.conf"
+        $NH_ROOT bash -c "wpa_passphrase \"$ssid\" \"$psk\" > $conf_file"
+        $NH_ROOT bash -c "
+            ip link set $iface up
+            wpa_supplicant -B -i $iface -c $conf_file
+            dhclient $iface 2>/dev/null || dhcpcd $iface 2>/dev/null
+        " &>/dev/null
+    fi
+    info "Đã kết nối $ssid (kiểm tra bằng ping)."
+}
+
+wifi_show_status() {
+    local iface
+    iface=$(wifi_list_interfaces | head -1)
+    echo "===== Trạng thái WIFI ====="
+    $NH_ROOT iw dev $iface link 2>/dev/null || echo "Chưa kết nối"
+    echo "----------------------------"
+    $NH_ROOT ifconfig $iface 2>/dev/null | grep -E 'inet|ether' || echo "Không có IP"
+    echo "============================"
+}
+
+wifi_menu() {
+    while true; do
+        clear
+        echo "========================================"
+        echo "        QUẢN LÝ WIFI – GHOST EDITION   "
+        echo "========================================"
+        echo " 1) Bật chế độ Monitor"
+        echo " 2) Tắt chế độ Monitor"
+        echo " 3) Quét mạng wifi xung quanh"
+        echo " 4) Kết nối wifi (thủ công)"
+        echo " 5) Hiển thị trạng thái kết nối"
+        echo " 6) Quay lại menu chính"
+        echo "========================================"
+        read -p "Lựa chọn của bạn (1-6): " wchoice
+        case $wchoice in
+            1) wifi_enable_monitor; read -p "Nhấn Enter..." ;;
+            2) wifi_disable_monitor; read -p "Nhấn Enter..." ;;
+            3) wifi_scan ;;
+            4) wifi_connect; read -p "Nhấn Enter..." ;;
+            5) wifi_show_status; read -p "Nhấn Enter..." ;;
+            6) break ;;
+            *) error "Lựa chọn không hợp lệ"; sleep 1 ;;
+        esac
+    done
+}
+
+# -------------------- DẤU VẾT --------------------
 wipe_traces() {
-    warn "XOA HOAN TOAN MOI DAU VET? (y/N): "
+    warn "XÓA HOÀN TOÀN MỌI DẤU VẾT? (y/N): "
     read -r confirm
     [[ "$confirm" =~ ^[Yy]$ ]] || return
-    info "Dang tay sach dau vet..."
+    info "Đang tẩy sạch dấu vết..."
     $NH_ROOT bash -c '
         find /home /root -name ".bash_history" -exec truncate -s 0 {} \;
         find /home /root -name ".zsh_history" -exec truncate -s 0 {} \;
@@ -207,11 +342,12 @@ wipe_traces() {
         history -c
     ' 2>/dev/null
     history -c
-    info "Da xoa sach"
+    info "Đã xóa sạch"
 }
 
+# -------------------- PANIC --------------------
 panic_mode() {
-    warn "KICH HOAT PANIC – HUY MOI TIEN TRINH"
+    warn "KÍCH HOẠT PANIC – HỦY MỌI TIẾN TRÌNH"
     $NH_ROOT bash -c '
         pkill -9 -f kex 2>/dev/null
         pkill -9 -f openvpn 2>/dev/null
@@ -219,6 +355,10 @@ panic_mode() {
         pkill -9 -f msfconsole 2>/dev/null
         pkill -9 -f wireshark 2>/dev/null
         pkill -9 -f xfce4 2>/dev/null
+        pkill -9 -f wpa_supplicant 2>/dev/null
+        pkill -9 -f dhclient 2>/dev/null
+        pkill -9 -f dhcpcd 2>/dev/null
+        airmon-ng stop wlan0mon 2>/dev/null
         iptables -P INPUT ACCEPT 2>/dev/null
         iptables -P OUTPUT ACCEPT 2>/dev/null
         iptables -P FORWARD ACCEPT 2>/dev/null
@@ -228,69 +368,73 @@ panic_mode() {
     clear
     echo "========================================"
     echo "      PANIC MODE ACTIVATED              "
-    echo "   MOI THU DA DUNG & FIREWALL RESET     "
+    echo "   MỌI THỨ ĐÃ DỪNG & FIREWALL RESET    "
     echo "========================================"
     sleep 2
 }
 
+# -------------------- MONITOR --------------------
 network_monitor() {
     ensure_pkg "bmon" true
     ensure_pkg "iftop" true
     ensure_pkg "nethogs" true
-    echo "1) bmon   – bang thong tong"
-    echo "2) iftop  – ket noi theo IP"
-    echo "3) nethogs – tien trinh su dung mang"
-    read -p "Chon: " mon
+    echo "1) bmon   – Băng thông tổng"
+    echo "2) iftop  – Kết nối theo IP"
+    echo "3) nethogs – Tiến trình sử dụng mạng"
+    read -p "Chọn: " mon
     case $mon in
         1) $NH_ROOT bmon ;;
         2) $NH_ROOT iftop ;;
         3) $NH_ROOT nethogs ;;
-        *) warn "Khong hop le" ;;
+        *) warn "Không hợp lệ" ;;
     esac
 }
 
+# -------------------- AUTO START --------------------
 enable_autostart() {
     if ! grep -q "kali-pro.sh" ~/.bashrc 2>/dev/null; then
         echo "bash ~/kali-pro.sh" >> ~/.bashrc
-        info "AutoStart da them vao .bashrc"
+        info "AutoStart đã thêm vào .bashrc"
     else
-        warn "AutoStart da ton tai"
+        warn "AutoStart đã tồn tại"
     fi
 }
 
+# -------------------- MENU CHÍNH --------------------
 show_menu() {
     clear
     echo "================================================"
-    echo "  KALI PRO GHOST EDITION – MINIMAL             "
+    echo "  KALI PRO GHOST EDITION – HỖ TRỢ WIFI ĐẦY ĐỦ "
     echo "================================================"
     echo ""
-    echo " 1) KHOI DONG HOAN CHINH (Desktop + VPN + Tor + MAC + Stealth)"
-    echo " 2) DUNG TAT CA DICH VU"
-    echo " 3) Kich hoat Kill Switch (chi VPN)"
-    echo " 4) Tat Kill Switch"
+    echo " 1) KHỞI ĐỘNG HOÀN CHỈNH (Desktop + VPN + Tor + MAC + Stealth)"
+    echo " 2) DỪNG TẤT CẢ DỊCH VỤ"
+    echo " 3) Kích hoạt Kill Switch (chỉ VPN)"
+    echo " 4) Tắt Kill Switch"
     echo " 5) Live Network Monitor"
-    echo " 6) Xoa sach dau vet (wipe traces)"
-    echo " 7) Toi uu he thong"
-    echo " 8) Bat AutoStart"
-    echo " 9) PANIC BUTTON – Dung khan cap"
-    echo "10) Thoat"
+    echo " 6) Xóa sạch dấu vết (wipe traces)"
+    echo " 7) Tối ưu hệ thống"
+    echo " 8) Bật AutoStart"
+    echo " 9) WIFI TOOLS (Monitor, scan, connect...)"
+    echo "10) PANIC BUTTON – Dừng khẩn cấp"
+    echo "11) Thoát"
     echo ""
-    echo "TRANG THAI:"
-    echo "  VPN : $(pgrep -f openvpn >/dev/null && echo "[ON]" || echo "[OFF]")"
-    echo "  Tor : $(pgrep -f tor >/dev/null && echo "[ON]" || echo "[OFF]")"
-    echo "  Desktop : $(pgrep -f kex >/dev/null && echo "[ON]" || echo "[OFF]")"
-    echo "  Kill Switch : $($NH_ROOT iptables -L OUTPUT 2>/dev/null | grep -q DROP && echo "[ON]" || echo "[OFF]")"
+    echo "TRẠNG THÁI:"
+    echo "  VPN : $(pgrep -f openvpn >/dev/null && echo "[BẬT]" || echo "[TẮT]")"
+    echo "  Tor : $(pgrep -f tor >/dev/null && echo "[BẬT]" || echo "[TẮT]")"
+    echo "  Desktop : $(pgrep -f kex >/dev/null && echo "[BẬT]" || echo "[TẮT]")"
+    echo "  Kill Switch : $($NH_ROOT iptables -L OUTPUT 2>/dev/null | grep -q DROP && echo "[BẬT]" || echo "[TẮT]")"
     echo ""
-    read -p "Lua chon cua ban (1-10): " choice
+    read -p "Lựa chọn của bạn (1-11): " choice
 }
 
 first_time_setup() {
-    info "Kiem tra ket noi internet..."
+    info "Kiểm tra kết nối internet..."
     if ! check_internet; then
-        error "Khong co ket noi mang. Vui long kiem tra lai."
+        error "Không có kết nối mạng. Vui lòng kiểm tra lại."
         exit 1
     fi
-    info "Bat dau cai dat toan dien Kali Ghost Edition..."
+    info "Bắt đầu cài đặt toàn diện Kali Ghost Edition..."
     system_optimize
     ensure_pkg "xfce4" true
     ensure_pkg "kali-desktop-xfce" true
@@ -300,9 +444,10 @@ first_time_setup() {
     ensure_pkg "macchanger" true
     ensure_pkg "iptables" true
     ensure_pkg "bmon iftop nethogs" true
+    ensure_pkg "aircrack-ng wireless-tools wpasupplicant network-manager iw" true
     $NH_ROOT mkdir -p /root/.config/xfce4/panel 2>/dev/null
     $NH_CMD kex --set-shared -y 2>/dev/null
-    info "Cai dat hoan tat! Ban co the khoi dong desktop bang option 1."
+    info "Cài đặt hoàn tất! Bạn có thể khởi động desktop bằng option 1."
     sleep 2
 }
 
@@ -314,21 +459,22 @@ main() {
     while true; do
         show_menu
         case $choice in
-            1) start_desktop; read -p "Nhan Enter de tiep tuc..." ;;
-            2) stop_desktop; read -p "Nhan Enter..." ;;
-            3) enable_kill_switch; read -p "Nhan Enter..." ;;
-            4) disable_kill_switch; read -p "Nhan Enter..." ;;
-            5) network_monitor; read -p "Nhan Enter..." ;;
-            6) wipe_traces; read -p "Nhan Enter..." ;;
-            7) system_optimize; read -p "Nhan Enter..." ;;
-            8) enable_autostart; read -p "Nhan Enter..." ;;
-            9) panic_mode; read -p "Nhan Enter..." ;;
-            10) info "Tam biet!"; exit 0 ;;
-            *) error "Lua chon khong hop le"; sleep 1 ;;
+            1) start_desktop; read -p "Nhấn Enter để tiếp tục..." ;;
+            2) stop_desktop; read -p "Nhấn Enter..." ;;
+            3) enable_kill_switch; read -p "Nhấn Enter..." ;;
+            4) disable_kill_switch; read -p "Nhấn Enter..." ;;
+            5) network_monitor; read -p "Nhấn Enter..." ;;
+            6) wipe_traces; read -p "Nhấn Enter..." ;;
+            7) system_optimize; read -p "Nhấn Enter..." ;;
+            8) enable_autostart; read -p "Nhấn Enter..." ;;
+            9) wifi_menu ;;
+            10) panic_mode; read -p "Nhấn Enter..." ;;
+            11) info "Tạm biệt!"; exit 0 ;;
+            *) error "Lựa chọn không hợp lệ"; sleep 1 ;;
         esac
     done
 }
 
-trap 'echo -e "\nThoat khan cap..."; exit 0' INT
+trap 'echo -e "\nThoát khẩn cấp..."; exit 0' INT
 
-main
+m
