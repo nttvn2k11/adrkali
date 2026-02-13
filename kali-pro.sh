@@ -429,11 +429,6 @@ show_menu() {
 }
 
 first_time_setup() {
-    info "Kiểm tra kết nối internet..."
-    if ! check_internet; then
-        error "Không có kết nối mạng. Vui lòng kiểm tra lại."
-        exit 1
-    fi
     info "Bắt đầu cài đặt toàn diện Kali Ghost Edition..."
     system_optimize
     ensure_pkg "xfce4" true
